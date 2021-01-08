@@ -26,6 +26,15 @@ class Pv:
     def total_area(self):
         return self.quantity * self.area
 
+    @staticmethod
+    def get_name(elem_id: int):
+        return {
+            11: "Panel polikrystaliczny",
+            12: "Panel monokrystaliczny",
+            13: "Panel z krzemu amorficznego",
+            14: "Panel cieńkowarstwowy"
+        }.get(elem_id, "Panel niezidentyfikowany")
+
 
 class Battery:
 
@@ -48,6 +57,14 @@ class Battery:
 
     def total_area(self):
         return self.area * self.quantity
+
+    @staticmethod
+    def get_name(elem_id: int):
+        return {
+            21: "Tesla PowerPack",
+            22: "StornEn PowerPack",
+            23: "Tesla MegaPack ",
+        }.get(elem_id, "Bareria niezidentyfikowany")
 
 
 class Taboo:
@@ -106,15 +123,6 @@ class Taboo:
 
         return value
 
-    # def is_element_viable(self, element):
-    #     for key, value in self.taboo_list[element.id].items():
-    #         if value == math.inf:
-    #             return True
-    #     return False
-
-
-# Random
-
 
 class ForbiddenAlgorithm:
     def __init__(self, pvs: List[Pv], batteries: List[Battery], budget: int, batteries_area_limit: int,
@@ -130,6 +138,10 @@ class ForbiddenAlgorithm:
         self.current_max_value = - math.inf
         self.pvs_max_value_comb = []
         self.batteries_max_value_comb = []
+
+        self.Zd= 120000 + 100000  # Wh (serwerownia + biuro)
+        self.Zn = 120000 + 60000  # Wh (serwerownia + biuro)
+        self.cp = 0.00065  # PLN/Wh
 
     def total_cost(self):
         t_cost = 0
@@ -172,10 +184,9 @@ class ForbiddenAlgorithm:
 
     def objective_f(self):  # funkcja celu
         # lista stalych parametrow
-        Zd = 120000 + 100000  # Wh (serwerownia + biuro)
-        Zn = 120000 + 60000  # Wh (serwerownia + biuro)
-        cp = 0.00065  # PLN/Wh
+
         etas = 0.7  # % (sprawnosc sprzedazy)
+        wcp = 1.05  # Wspolczynnik wzrostu cenny pradu
         season = [0.85, 0.95, 0.85, 0.8]
         Bmax = self.all_batteries_capacity()
         # Wyliczam srednia wazona sprawnosci baterii
@@ -191,18 +202,19 @@ class ForbiddenAlgorithm:
         for season_eff in season:
             Pt = self.daily_energy_production(season_eff)
 
-            if Pt <= Zd:
-                daily_income += (Pt - Zd) * cp - Zn * cp
+            if Pt <= self.Zd:
+                daily_income += (Pt - self.Zd) * self.cp - self.Zn * self.cp
 
-            if Zd < Pt <= (Bmax + Zd):
-                daily_income += ((Pt - Zd) * etab - Zn) * cp
+            if self.Zd < Pt <= (Bmax + self.Zd):
+                daily_income += ((Pt - self.Zd) * etab - self.Zn) * self.cp
 
-            if (Zd + Bmax) < Pt:
-                daily_income += (Bmax * etab - Zn) * cp + (Pt - Zd - Bmax) * etas * cp
+            if (self.Zd + Bmax) < Pt:
+                daily_income += (Bmax * etab - self.Zn) * self.cp + (Pt - self.Zd - Bmax) * etas * self.cp
 
         yearly_income = daily_income * (365 / 4)
 
-        return 20 * yearly_income - self.total_cost()
+        # return 20 * yearly_income - self.total_cost()
+        return yearly_income * (1 - pow(wcp, 20)) / (1 - wcp) - self.total_cost()
 
     def find_min(self):
         self.preliminary_opt()
@@ -347,30 +359,19 @@ class ForbiddenAlgorithm:
     def preliminary_opt(self):
         for pv_checked in self.pvs:
             for pv_compared in self.pvs:
-                if pv_checked.price > pv_compared.price and pv_checked.power <= pv_compared.power:
+                if pv_checked.price > pv_compared.price and pv_checked.power <= pv_compared.power \
+                        and pv_checked.efficiency <= pv_compared.efficiency and pv_checked.area <= pv_compared.area:
                     for key, value in self.Taboo.taboo_list[pv_checked.id].items():
                         if key != 0:
                             self.Taboo.taboo_list[pv_checked.id][key] = math.inf
 
         for bat_checked in self.batteries:
             for bat_compared in self.batteries:
-                if bat_checked.price > bat_compared.price and (
-                        bat_checked.capacity <= bat_compared.capacity or bat_checked.efficiency <= bat_checked.efficiency):
+                if bat_checked.price > bat_compared.price and bat_checked.capacity <= bat_compared.capacity \
+                        and bat_checked.efficiency <= bat_checked.efficiency and bat_checked.area <= bat_compared.area:
                     for key, value in self.Taboo.taboo_list[bat_checked.id].items():
                         if key != 0:
                             self.Taboo.taboo_list[bat_checked.id][key] = math.inf
 
-# area_batteries = 1500
-# area_pvs = 1500
-# budget = 100000
-# alg2 = ForbiddenAlgorithm(Scenarios().p_based_on_data, Scenarios().b_based_on_data, budget, area_batteries, area_pvs)
-# solution_v1 = alg2.find_min_v2()
-# for p in solution_v1[1]:
-#     print(p, "\n")
-#
-# for b in solution_v1[2]:
-#     print(b, "\n")
-#
-# print("Max value = ", solution_v1[0])
 
 
